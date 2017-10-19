@@ -1,0 +1,136 @@
+#!/bin/bash
+
+#########################################################################
+#                                                                       #
+# A pastebin utility that supports screenshots and syntax-highlighted   #   
+# source code.                                                          #
+#                                                                       #
+# Kwan L. Fong                                                          #
+# Oct 8, 2017.                                                          #
+#                                                                       #
+# Copyright (C) 2017, Kwan L. Fong.  All rights reserved.               #
+#########################################################################
+
+pb () {
+  [ -z "$1" -o -f "$1" ]
+  status=$?
+
+  if [ $status -ne 0 ]
+  then
+    echo "pbutils: $1: No such file" >&2
+    exit $status
+  fi
+
+  printf "\n------------------------------------------------\n\n" >> "$logfile"
+  
+  while read line
+  do
+    re_uuid="^(uuid: )(.*)$"
+    re_url="^(url: )(.*)$"
+    if [[ "$line" =~ $re_url ]]
+    then
+      url="${BASH_REMATCH[2]}"
+    elif [[ "$line" =~ $re_uuid ]]
+    then
+      uuid="${BASH_REMATCH[2]}"
+    fi
+  done < <(curl -sF "c=@${1:--}" 'https://ptpb.pw?r=1' | tee -a  /dev/stderr "$logfile")
+
+  if [[ -n "$xclipboard" ]]
+  then
+    # copy the url to the X server CLIPBOARD selection
+    printf "$url" | xsel -l /dev/null -a -b
+  fi
+}
+
+pb2c () {
+  xclipboard=1
+  pb "$1"
+}
+
+pbscreen () {
+  prefix=`date +%Y%m%d%H%M%S`
+  gm import -window root /tmp/$prefix.png
+  pb /tmp/$prefix.png
+}
+
+pbscreen2c () {
+  xclipboard=1
+  echo "$1"
+  pbscreen "$1"
+}
+
+pbwindow () {
+  prefix=`date +%Y%m%d%H%M%S`
+  windows=""
+  [ -n "$1" ] && mapfile -t windows < <(wmctrl -l | sed -rn "s/^([^ ]+).*${1}.*/\1/p")
+  xsel -c -b
+  for (( i=0; i < ${#windows[@]}; i++ ))
+  do
+    [ $i -ne 0 ] && printf "\n" | xsel -l /dev/null -a -b 
+    gm import ${1:+"-window"} "${windows[i]}" /tmp/"${prefix}_${windows[i]}".png
+    pb /tmp/"${prefix}_${windows[i]}".png
+  done
+}
+
+pbwindow2c () {
+  xclipboard=1
+  pbwindow "$1"
+}
+
+pblist () {
+  colors=("38;5;208" "1" "38;5;196")
+  
+  if  [ ! -f "$logfile" ]
+  then
+    echo "pbutils: Your pastebin on ptpb is empty."
+    exit 0
+  fi
+
+  while read line
+  do
+    re_uuid="^(uuid: )(.*)$"
+    re_url="^(url: )(.*)$"
+    if [[ "$line" =~ $re_url ]]
+    then
+      url="${BASH_REMATCH[2]}"
+      read line
+      # the uuid line immediately follows the url line.
+      [[ "$line" =~ $re_uuid ]]
+      uuid="${BASH_REMATCH[2]}"
+      [ -n "$uuid"  ] && printf "uuid: $uuid url: $url\n"
+    fi
+    
+  done < "$logfile"
+}
+
+# ---------------------------------------------------------
+# Main menu
+#----------------------------------------------------------
+logfile="$HOME/Dropbox/Cloud Services/Pastebins/ptpb.log"
+case "$1" in
+  "pb")
+    pb "$2"
+    ;;
+  "pb2c")
+    pb2c "$2"
+    ;;
+  "pbscreen")
+    pbscreen "$2"
+    ;;
+  "pbscreen2c")
+    pbscreen2c "$2"
+    ;;
+  "pbwindow")
+    pbwindow "$2"
+    ;;
+  "pbwindow2c")
+    pbwindow2c "$2"
+    ;;
+  "pblist")
+    pblist
+    ;;
+  *)
+    echo "Error encountered!"
+    ;;
+esac
