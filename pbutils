@@ -56,7 +56,6 @@ pbscreen () {
 
 pbscreen2c () {
   xclipboard=1
-  echo "$1"
   pbscreen "$1"
 }
 
